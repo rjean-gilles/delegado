@@ -6,7 +6,7 @@ import scala.reflect.macros.Context
 import annotation.target.getter
 
 @getter
-class delegate extends scala.annotation.StaticAnnotation
+class DelegateAnnotation extends scala.annotation.StaticAnnotation
 
 object Delegate {
 
@@ -23,7 +23,7 @@ object Delegate {
     val tpe = implicitly[c.WeakTypeTag[T]].tpe // in RC1 this will become c.absTypeOf[T]
     val clazz = tpe.typeSymbol.asClass
     
-    val annotationClass = c.mirror.staticClass("delegado.delegate")    
+    val annotationClass = c.mirror.staticClass("delegado.DelegateAnnotation")    
     val getters = tpe.members.collect{ 
       case x: MethodSymbol if x.isGetter && x.annotations.exists(_.tpe.typeSymbol == annotationClass) => x 
       case x: ModuleSymbol if x.annotations.exists(_.tpe.typeSymbol == annotationClass) => x 
@@ -58,12 +58,16 @@ object Delegate {
       def isExplicitlyOverriden(m: MethodSymbol) = {
         localMembers.exists{m2 => m2.name == m.name && m2.typeSignature =:= m.typeSignature}
       }
+      def isDeclared(m: MethodSymbol) = {
+        tpe.members.exists{m2 => m2.name == m.name && m2.typeSignature =:= m.typeSignature}
+      }
       val forwardedMethods = retType.members.collect { case x: MethodSymbol if x.isPublic && !x.isConstructor  && !x.isFinal && !isExplicitlyOverriden(x) => x }
       forwardedMethods.map{ m =>
         val args = m.paramss.map(_.map{ param => ValDef(/* FIXME */NoMods, param.name.asInstanceOf[TermName], TypeTree(param.typeSignature), EmptyTree)})
         val initExpr = Select(Select(This(newTypeName("")), getter.name), m.name)
-        val expr = args.foldLeft( initExpr: Tree ){ case (cur, argList) =>  Apply(cur, argList.map{ arg => Ident( arg.name) })}
-        DefDef(/* FIXME */Modifiers(OVERRIDE), m.name, /* FIXME */Nil, args, TypeTree(), Block(Nil, expr))
+        val expr = args.foldLeft( initExpr: Tree ){ case (cur, argList) =>  Apply(cur, argList.map{ arg => Ident( arg.name ) })}
+        val mods = if ( isDeclared( m ) ) Modifiers(OVERRIDE) else NoMods /* TODO: pass along the original modifiers of the forwarded method */
+        DefDef(mods, m.name, /* FIXME */Nil, args, TypeTree(), Block(Nil, expr))
       }
     }.toList
 
@@ -82,7 +86,6 @@ object Delegate {
     }
     val factoryCtorBody = Apply(Select(Super(This(newTypeName("")), newTypeName("")), nme.CONSTRUCTOR), Nil)
     val factoryCtor = DefDef(NoMods, nme.CONSTRUCTOR, Nil, List(Nil), TypeTree(), Block(List(factoryCtorBody), Literal(Constant(()))))
-    //val factoryTpt = Template(/*Nil*/List(Ident(c.mirror.staticClass("scala.AnyRef"))), emptyValDef, factoryCtor +: factoryMethods)
     val factoryTypeName = newTypeName(c.fresh(clazz.name + "$delegatefactory"))
     val factoryTpt = Template(List(AppliedTypeTree(Ident(c.mirror.staticClass("delegado.Delegate.DelegateBuilder")), List(Ident(factoryTypeName), Ident(tpe.typeSymbol.name)))), emptyValDef, factoryCtor +: factoryMethods)
     val factoryDef = ClassDef(NoMods, factoryTypeName, Nil, factoryTpt)
