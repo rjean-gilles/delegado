@@ -3,16 +3,19 @@ package delegado_test
 import org.specs2.mutable._
 import delegado._
 
-// NOTE: these examples are taken (and adapted) from the documentation for the autoproxy plugin by Kevin wright.
+// NOTE: Some of these examples are taken (and adapted) from the documentation for the autoproxy plugin by Kevin Wright.
 class DelegadoTest extends Specification {
   sequential
-
+  
+  // --------------------------------------------------
+    
   abstract class I {
     def foo(): String
     def bar(): String
     def bar(arg: String): String
     def baz(): String
   }
+  
 
   "Delegado" should {
   
@@ -24,6 +27,8 @@ class DelegadoTest extends Specification {
         def baz() = "a.baz"
       }
       
+      implicit val myMapping = Delegate.Mapping{ x: A => null.asInstanceOf[B] }//TEST
+
       abstract class B(@delegate val a : A) extends I {
         def bar() = "b.bar"
       }
@@ -68,7 +73,7 @@ class DelegadoTest extends Specification {
       c.baz() must_== "inner.baz"
     }
     
-    "properly delegate to methods not declared explictly in the containing class, and make accessible" in {
+    "properly delegate to methods not declared explictly in the containing class's bas traits/classes" in {
       class Foo {
         @delegate protected object properties {
           var a: Int = 123
@@ -95,6 +100,39 @@ class DelegadoTest extends Specification {
       foo.c must_== "hello"
       foo.c = "bye"
       foo.c must_== "bye!"
+    }
+    // --------------------------------------------------
+    "allow to delegate in a recursive way" in {
+      // FIXME: ouch, this is ugly! Plus there is no actual "UInt" type that contains the operators "*","/" and so on
+      
+      class UInt /*private*/ ( @delegate(recursive=true) val i: Int ) {
+        override def toString = i.toString
+        override def hashCode = i
+        override def equals( o: Any ) = o match {
+          case ui2: UInt => ui2.i == i
+          case _ => false
+        }
+      }
+      object UInt {
+        def apply( i: Int ): UInt = {
+          require( i >= 0 )
+          new UInt( i )
+        }
+        private implicit val toInt = Delegate.Mapping{ u: UInt => u.i }
+        private implicit val fromInt: Delegate.Mapping[Int, UInt] = Delegate.Mapping{ i: Int => delegateBuilder( i ) }
+        implicit lazy val delegateBuilder = Delegate.builder[UInt]
+      }
+            
+      val u1 = Delegate[UInt].build( 3 )
+      u1 must beAnInstanceOf[UInt]
+      val u2 = u1 * Delegate[UInt].build( 2 )
+      u2 must beAnInstanceOf[UInt]
+      u2 must_== Delegate[UInt].build( 6 )
+      /* FIXME: cannot actually work as is: u3 is of type UInt instead of the generate sub-type that contains the operators "*","/" and so on
+      val u3 = u2 / Delegate[UInt].build( 3 )
+      u3 must beAnInstanceOf[UInt]
+      u3 must_== Delegate[UInt].build( 2 )
+      */
     }
   }
 }

@@ -1,3 +1,5 @@
+name := "delegado"
+
 resolvers ++= Seq(
   "Sonatype OSS Releases" at "http://oss.sonatype.org/content/repositories/releases/",
   "Sonatype OSS Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/"
@@ -12,7 +14,7 @@ scalaVersion := "2.10.0"
 
 version := "0.1"
 
-libraryDependencies <+= scalaVersion( "org.scala-lang" % "scala-reflect" % _ )
+libraryDependencies <+= scalaVersion( "org.scala-lang" % "scala-reflect" % _ % "compile" )
 
 libraryDependencies += "org.specs2" %% "specs2" % "1.14" % "test"
 
